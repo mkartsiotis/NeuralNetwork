@@ -1,9 +1,14 @@
 #include <cmath>
 #include <cstddef>
+#include <cstdlib>
 #include <iostream>
 #include <vector>
 using namespace std;
+const double learning_rate = 0.2;
 
+#include <fstream>
+#include <sstream>
+#include <string>
 class Matrix
 {
   private:
@@ -60,6 +65,14 @@ class Matrix
                     element += (this->getData())[i][k] * (B.getDataConst())[k][j];
                 (ReturnMatrix.getData())[i][j] = element;
             }
+        return ReturnMatrix;
+    }
+    Matrix operator*(const double number)
+    {
+        Matrix ReturnMatrix(this->number_of_rows, this->number_of_columns);
+        for (int i = 0; i < ReturnMatrix.number_of_rows; i++)
+            for (int j = 0; j < ReturnMatrix.number_of_columns; j++)
+                ReturnMatrix.getData()[i][j] = number * this->getData()[i][j];
         return ReturnMatrix;
     }
     Matrix &operator=(const Matrix &other);
@@ -156,6 +169,7 @@ class Layer
   public:
     virtual Matrix forward(const Matrix &input) = 0;
     virtual Matrix backward(const Matrix &previous_layer_error) = 0;
+    virtual void update_weights() = 0;
     virtual ~Layer()
     {
     }
@@ -175,6 +189,9 @@ class DenseLayer : public Layer
     DenseLayer(int input_size, int output_size)
     {
         W = new Matrix(output_size, input_size);
+        for (int i = 0; i < W->getRows(); i++)
+            for (int j = 0; j < W->getCols(); j++)
+                W->getData()[i][j] = 0.5 - ((double)(rand() % 10000) / 10000.0);
         B = new Matrix(output_size, 1);
         Input = new Matrix(input_size, 1);
         Z = new Matrix(output_size, 1);
@@ -212,6 +229,13 @@ class DenseLayer : public Layer
         *dJ_dW = (*dJ_dB) * Input->traspose();
         return (W->traspose() * (*dJ_dB));
     }
+    void update_weights() override
+    {
+        *W = ((*W) + ((*dJ_dW) * (-learning_rate)));
+        *B = ((*B) + ((*dJ_dB) * (-learning_rate)));
+        *dJ_dW = (*dJ_dW) * 0.0;
+        *dJ_dB = (*dJ_dB) * 0.0;
+    }
 };
 
 // Now for the final integration
@@ -241,8 +265,64 @@ class NeuralNetwork
         for (int i = Layer_Vector.size() - 1; i >= 0; i--)
             current_error = Layer_Vector[i]->backward(current_error);
     }
+    void update()
+    {
+        for (size_t i = 0; i < Layer_Vector.size(); i++)
+            Layer_Vector.at(i)->update_weights();
+    }
 };
-int main()
+
+// This is the parser part that was a bit vibe coded...
+bool load_mnist_csv(const string &filename, vector<Matrix> &images, vector<Matrix> &labels, int max_rows)
+{
+    ifstream file(filename);
+    if (!file.is_open())
+    {
+        cout << "Error: Could not open file " << filename << endl;
+        return false;
+    }
+
+    string line;
+    if (!getline(file, line))
+        return false;
+
+    int row_count = 0;
+    while (getline(file, line) && row_count < max_rows)
+    {
+        stringstream ss(line);
+        string token;
+
+        if (getline(ss, token, ','))
+        {
+            int label_val = stoi(token);
+            Matrix target(10, 1);
+            target.getData()[label_val][0] = 1.0; // 1.0 στη σωστή θέση, 0.0 παντού αλλού
+            labels.push_back(target);
+        }
+
+        // Φτιάχνουμε τον Input Vector (784x1) για τα pixels
+        Matrix image(784, 1);
+        int pixel_idx = 0;
+
+        // Διαβάζουμε τα υπόλοιπα 784 στοιχεία (τα pixels) χωρισμένα με κόμμα
+        while (getline(ss, token, ',') && pixel_idx < 784)
+        {
+            double pixel_val = stod(token);
+            // Normalization: Διαιρούμε με το 255.0 για να πάει στο [0.0, 1.0]
+            image.getData()[pixel_idx][0] = pixel_val / 255.0;
+            pixel_idx++;
+        }
+
+        images.push_back(image);
+        row_count++;
+    }
+
+    file.close();
+    cout << "Successfully loaded " << row_count << " rows from " << filename << endl;
+    return true;
+}
+/*
+*int main()
 {
     cout << "INITIALIZING Matrix" << endl;
     Matrix MyMatrix1(3, 3);
@@ -264,4 +344,94 @@ int main()
             cout << MyMatrix2.getData()[i][j] << " ";
         cout << endl;
     }
+}
+*/
+int main()
+{
+    NeuralNetwork NN({784, 64, 10});
+
+    vector<Matrix> all_images;
+    vector<Matrix> all_labels;
+    if (!load_mnist_csv("mnist_test.csv", all_images, all_labels, 10000))
+    {
+        return -1;
+    }
+
+    vector<Matrix> train_images(all_images.begin(), all_images.begin() + 7000);
+    vector<Matrix> train_labels(all_labels.begin(), all_labels.begin() + 7000);
+
+    vector<Matrix> test_images(all_images.begin() + 7000, all_images.end());
+    vector<Matrix> test_labels(all_labels.begin() + 7000, all_labels.end());
+
+    cout << "Starting Training..." << endl;
+
+    int epochs = 10; // Πόσες φορές θα δει όλο το dataset
+    for (int epoch = 0; epoch < epochs; epoch++)
+    {
+        double total_loss = 0;
+        for (size_t i = 0; i < train_images.size(); i++)
+        {
+            // Forward Pass
+            Matrix output = NN.forward(train_images[i]);
+
+            // Cost function reeoc calculation
+            Matrix error = output + (train_labels[i] * -1.0);
+
+            // Προαιρετικό: Υπολογισμός ενός απλού MSE loss για να βλέπουμε αν πέφτει
+            for (int k = 0; k < 10; k++)
+            {
+                total_loss += error.getData()[k][0] * error.getData()[k][0];
+            }
+
+            // 3. Backward Pass
+            NN.backward(error);
+
+            // 4. Update Weights
+            NN.update();
+        }
+        cout << "Epoch " << epoch + 1 << "/" << epochs << " - Loss: " << total_loss / train_images.size() << endl;
+    }
+
+    cout << "Training finished!" << endl;
+
+    cout << "\nStarting Testing..." << endl;
+    int correct_predictions = 0;
+
+    for (size_t i = 0; i < test_images.size(); i++)
+    {
+        Matrix output = NN.forward(test_images[i]);
+
+        // Βρίσκουμε ποιο ψηφίο "μαντέψψε" το δίκτυο (ποιο index έχει τη μεγαλύτερη τιμή στην έξοδο)
+        int predicted_digit = 0;
+        double max_val = output.getData()[0][0];
+        for (int k = 1; k < 10; k++)
+        {
+            if (output.getData()[k][0] > max_val)
+            {
+                max_val = output.getData()[k][0];
+                predicted_digit = k;
+            }
+        }
+
+        // Βρίσκουμε ποιο ήταν το πραγματικό ψηφίο από τον One-Hot vector
+        int actual_digit = 0;
+        for (int k = 0; k < 10; k++)
+        {
+            if (test_labels[i].getData()[k][0] == 1.0)
+            {
+                actual_digit = k;
+                break;
+            }
+        }
+
+        if (predicted_digit == actual_digit)
+        {
+            correct_predictions++;
+        }
+    }
+
+    double accuracy = (double)correct_predictions / test_images.size() * 100.0;
+    cout << "Testing Finished! Accuracy: " << accuracy << "%" << endl;
+
+    return 0;
 }
