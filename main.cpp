@@ -254,6 +254,11 @@ template <typename T> class NeuralNetwork
         for (size_t i = 0; i < topology.size() - 1; i++)
             Layer_Vector.push_back(new DenseLayer<T>(topology[i], topology[i + 1]));
     }
+    ~NeuralNetwork()
+    {
+        for (size_t i = 0; i < topology.size() - 1; i++)
+            delete Layer_Vector.at(i);
+    }
     Matrix<T> forward(Matrix<T> input)
     {
         Matrix<T> current_act = input;
