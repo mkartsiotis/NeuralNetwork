@@ -9,11 +9,11 @@ const double learning_rate = 0.2;
 #include <fstream>
 #include <sstream>
 #include <string>
-class Matrix
+template <typename T> class Matrix
 {
   private:
     int number_of_rows, number_of_columns;
-    double **data;
+    T **data;
 
   public:
     Matrix(int rows, int colums);
@@ -34,11 +34,11 @@ class Matrix
     {
         number_of_rows = r;
     }
-    double **getData()
+    T **getData()
     {
         return data;
     }
-    double **getDataConst() const
+    T **getDataConst() const
     {
         return data;
     }
@@ -90,13 +90,15 @@ class Matrix
     ~Matrix();
 };
 
-Matrix::Matrix(int rows, int columns) : number_of_rows(rows), number_of_columns(columns)
+template <typename T> Matrix<T>::Matrix(int rows, int columns) : number_of_rows(rows), number_of_columns(columns)
 {
     data = new double *[number_of_rows];
     for (int i = 0; i < number_of_rows; i++)
         data[i] = new double[number_of_columns]();
 }
-Matrix::Matrix(const Matrix &other) : number_of_rows(other.number_of_rows), number_of_columns(other.number_of_columns)
+template <typename T>
+Matrix<T>::Matrix(const Matrix &other)
+    : number_of_rows(other.number_of_rows), number_of_columns(other.number_of_columns)
 {
     data = new double *[number_of_rows];
     for (int i = 0; i < number_of_rows; i++)
@@ -105,13 +107,13 @@ Matrix::Matrix(const Matrix &other) : number_of_rows(other.number_of_rows), numb
         for (int j = 0; j < number_of_columns; j++)
             data[i][j] = other.getDataConst()[i][j];
 }
-Matrix::~Matrix()
+template <typename T> Matrix<T>::~Matrix()
 {
     for (int i = 0; i < number_of_rows; i++)
         delete[] data[i];
     delete[] data;
 }
-Matrix Matrix::traspose()
+template <typename T> Matrix<T> Matrix<T>::traspose()
 {
     Matrix ReturnMatrix(this->getCols(), this->getRows());
     for (int i = 0; i < ReturnMatrix.number_of_rows; i++)
@@ -120,7 +122,7 @@ Matrix Matrix::traspose()
     return ReturnMatrix;
 }
 
-Matrix &Matrix::operator=(const Matrix &other)
+template <typename T> Matrix<T> &Matrix<T>::operator=(const Matrix &other)
 {
     if (this == &other)
         return *this;
@@ -167,8 +169,8 @@ class Layer
 {
   private:
   public:
-    virtual Matrix forward(const Matrix &input) = 0;
-    virtual Matrix backward(const Matrix &previous_layer_error) = 0;
+    virtual Matrix<double> forward(const Matrix<double> &input) = 0;
+    virtual Matrix<double> backward(const Matrix<double> &previous_layer_error) = 0;
     virtual void update_weights() = 0;
     virtual ~Layer()
     {
@@ -178,25 +180,25 @@ class Layer
 class DenseLayer : public Layer
 {
   private:
-    Matrix *W; // weights
-    Matrix *B; // biases
-    Matrix *Input;
-    Matrix *Z; // OUTPUT Z = W Input + B, Z is before the non linear normalizatrion function like RELU or σ
-    Matrix *dJ_dW;
-    Matrix *dJ_dB;
+    Matrix<double> *W; // weights
+    Matrix<double> *B; // biases
+    Matrix<double> *Input;
+    Matrix<double> *Z; // OUTPUT Z = W Input + B, Z is before the non linear normalizatrion function like RELU or σ
+    Matrix<double> *dJ_dW;
+    Matrix<double> *dJ_dB;
 
   public:
     DenseLayer(int input_size, int output_size)
     {
-        W = new Matrix(output_size, input_size);
+        W = new Matrix<double>(output_size, input_size);
         for (int i = 0; i < W->getRows(); i++)
             for (int j = 0; j < W->getCols(); j++)
                 W->getData()[i][j] = 0.5 - ((double)(rand() % 10000) / 10000.0);
-        B = new Matrix(output_size, 1);
-        Input = new Matrix(input_size, 1);
-        Z = new Matrix(output_size, 1);
-        dJ_dW = new Matrix(output_size, input_size);
-        dJ_dB = new Matrix(output_size, 1);
+        B = new Matrix<double>(output_size, 1);
+        Input = new Matrix<double>(input_size, 1);
+        Z = new Matrix<double>(output_size, 1);
+        dJ_dW = new Matrix<double>(output_size, input_size);
+        dJ_dB = new Matrix<double>(output_size, 1);
     }
     ~DenseLayer()
     {
@@ -208,21 +210,21 @@ class DenseLayer : public Layer
         delete dJ_dW;
     }
     // New OPP Knowledge!Pointer to function!!
-    Matrix normalization_funct(double (*func)(double)) const
+    Matrix<double> normalization_funct(double (*func)(double)) const
     {
-        Matrix ReturnMatrix(Z->getRows(), Z->getCols());
+        Matrix<double> ReturnMatrix(Z->getRows(), Z->getCols());
         for (int i = 0; i < ReturnMatrix.getRows(); i++)
             for (int j = 0; j < ReturnMatrix.getCols(); j++)
                 ReturnMatrix.getData()[i][j] = func(Z->getData()[i][j]);
         return ReturnMatrix;
     }
-    Matrix forward(const Matrix &input) override
+    Matrix<double> forward(const Matrix<double> &input) override
     {
         *Input = input;
         *Z = ((*W) * (*Input)) + (*B);
         return normalization_funct(sigmoid);
     }
-    Matrix backward(const Matrix &previous_layer_error) override
+    Matrix<double> backward(const Matrix<double> &previous_layer_error) override
     {
         // It is true that delta of the level is the dJ_dB
         *dJ_dB = previous_layer_error.Hadamard(normalization_funct(sigmoid_derivative));
@@ -252,16 +254,16 @@ class NeuralNetwork
         for (size_t i = 0; i < topology.size() - 1; i++)
             Layer_Vector.push_back(new DenseLayer(topology[i], topology[i + 1]));
     }
-    Matrix forward(Matrix input)
+    Matrix<double> forward(Matrix<double> input)
     {
-        Matrix current_act = input;
+        Matrix<double> current_act = input;
         for (size_t i = 0; i < Layer_Vector.size(); i++)
             current_act = Layer_Vector.at(i)->forward(current_act);
         return current_act;
     }
-    void backward(const Matrix &output_error)
+    void backward(const Matrix<double> &output_error)
     {
-        Matrix current_error = output_error;
+        Matrix<double> current_error = output_error;
         for (int i = Layer_Vector.size() - 1; i >= 0; i--)
             current_error = Layer_Vector[i]->backward(current_error);
     }
@@ -273,7 +275,8 @@ class NeuralNetwork
 };
 
 // This is the parser part that was a bit vibe coded...
-bool load_mnist_csv(const string &filename, vector<Matrix> &images, vector<Matrix> &labels, int max_rows)
+bool load_mnist_csv(const string &filename, vector<Matrix<double>> &images, vector<Matrix<double>> &labels,
+                    int max_rows)
 {
     ifstream file(filename);
     if (!file.is_open())
@@ -295,13 +298,13 @@ bool load_mnist_csv(const string &filename, vector<Matrix> &images, vector<Matri
         if (getline(ss, token, ','))
         {
             int label_val = stoi(token);
-            Matrix target(10, 1);
+            Matrix<double> target(10, 1);
             target.getData()[label_val][0] = 1.0; // 1.0 στη σωστή θέση, 0.0 παντού αλλού
             labels.push_back(target);
         }
 
         // Φτιάχνουμε τον Input Vector (784x1) για τα pixels
-        Matrix image(784, 1);
+        Matrix<double> image(784, 1);
         int pixel_idx = 0;
 
         // Διαβάζουμε τα υπόλοιπα 784 στοιχεία (τα pixels) χωρισμένα με κόμμα
@@ -350,34 +353,34 @@ int main()
 {
     NeuralNetwork NN({784, 64, 10});
 
-    vector<Matrix> all_images;
-    vector<Matrix> all_labels;
+    vector<Matrix<double>> all_images;
+    vector<Matrix<double>> all_labels;
     if (!load_mnist_csv("mnist_test.csv", all_images, all_labels, 10000))
     {
         return -1;
     }
 
-    vector<Matrix> train_images(all_images.begin(), all_images.begin() + 7000);
-    vector<Matrix> train_labels(all_labels.begin(), all_labels.begin() + 7000);
+    vector<Matrix<double>> train_images(all_images.begin(), all_images.begin() + 7000);
+    vector<Matrix<double>> train_labels(all_labels.begin(), all_labels.begin() + 7000);
 
-    vector<Matrix> test_images(all_images.begin() + 7000, all_images.end());
-    vector<Matrix> test_labels(all_labels.begin() + 7000, all_labels.end());
+    vector<Matrix<double>> test_images(all_images.begin() + 7000, all_images.end());
+    vector<Matrix<double>> test_labels(all_labels.begin() + 7000, all_labels.end());
 
     cout << "Starting Training..." << endl;
 
-    int epochs = 10; // Πόσες φορές θα δει όλο το dataset
+    int epochs = 10;
     for (int epoch = 0; epoch < epochs; epoch++)
     {
         double total_loss = 0;
         for (size_t i = 0; i < train_images.size(); i++)
         {
             // Forward Pass
-            Matrix output = NN.forward(train_images[i]);
+            Matrix<double> output = NN.forward(train_images[i]);
 
             // Cost function reeoc calculation
-            Matrix error = output + (train_labels[i] * -1.0);
+            Matrix<double> error = output + (train_labels[i] * -1.0);
 
-            // Προαιρετικό: Υπολογισμός ενός απλού MSE loss για να βλέπουμε αν πέφτει
+            // MSE loss
             for (int k = 0; k < 10; k++)
             {
                 total_loss += error.getData()[k][0] * error.getData()[k][0];
@@ -399,9 +402,7 @@ int main()
 
     for (size_t i = 0; i < test_images.size(); i++)
     {
-        Matrix output = NN.forward(test_images[i]);
-
-        // Βρίσκουμε ποιο ψηφίο "μαντέψψε" το δίκτυο (ποιο index έχει τη μεγαλύτερη τιμή στην έξοδο)
+        Matrix<double> output = NN.forward(test_images[i]);
         int predicted_digit = 0;
         double max_val = output.getData()[0][0];
         for (int k = 1; k < 10; k++)
@@ -412,8 +413,6 @@ int main()
                 predicted_digit = k;
             }
         }
-
-        // Βρίσκουμε ποιο ήταν το πραγματικό ψηφίο από τον One-Hot vector
         int actual_digit = 0;
         for (int k = 0; k < 10; k++)
         {
